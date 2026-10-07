@@ -86,6 +86,7 @@ def export_review(input_path, output, batch_chars=30000):
         source = {'id': 's%d' % index, 'title': doc.title,
                   'filename': Path(path).name, 'source_sha256': hashlib.sha256(Path(path).read_bytes()).hexdigest(),
                   'total_pdf_pages': doc.total_pages or 1, 'omitted_minimal_text_pages': doc.blank_pages,
+                  'page_contexts': {str(p.number): {'paths': p.section_paths, 'default': p.default_section_path} for p in doc.pages if p.section_paths or p.default_section_path},
                   'parts': []}
         for number, pages in enumerate(batches, 1):
             name = 'document-%03d-part-%03d.txt' % (index, number)
@@ -153,6 +154,20 @@ def import_review(folder):
         numbers = [p.number for p in pages]
         if not numbers or numbers != sorted(set(numbers)) or numbers[-1] > source['total_pdf_pages']:
             raise ValueError('Invalid page ranges across batches.')
+        contexts = source.get('page_contexts', {})
+        if not isinstance(contexts, dict):
+            raise ValueError('Invalid publisher section metadata.')
+        for page in pages:
+            item = contexts.get(str(page.number), {})
+            if not isinstance(item, dict) or not isinstance(item.get('paths', {}), dict):
+                raise ValueError('Invalid publisher section metadata.')
+            paths = item.get('paths', {})
+            default = item.get('default', '')
+            if (not isinstance(default, str) or len(default) > 2000 or len(paths) > 500
+                    or any(not isinstance(k, str) or not isinstance(v, str) or len(k) > 200 or len(v) > 2000 for k,v in paths.items())):
+                raise ValueError('Invalid publisher section metadata.')
+            page.section_paths = paths
+            page.default_section_path = default
         results.append((source, pages, original_pages))
     return results
 

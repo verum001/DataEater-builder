@@ -60,6 +60,31 @@ class ReviewTests(unittest.TestCase):
             chunks=[json.loads(l) for l in z.read("chunks.jsonl").decode().splitlines()]
             self.assertEqual([c["id"] for c in chunks],["c001","c002"])
 
+    def test_publisher_structure_survives_review_and_database(self):
+        pdf_path=self.root/'structured.pdf'
+        with pymupdf.open() as pdf:
+            for title in ['Four-Stroke Cycle','Intake Stroke']:
+                page=pdf.new_page()
+                page.insert_textbox(pymupdf.Rect(50,50,550,750),title+"\n"+"The test piston moves downward. "*20,fontsize=11)
+            pdf.set_toc([[1,'Four-Stroke Cycle',1],[2,'Intake Stroke',2]])
+            pdf.save(pdf_path)
+        folder=self.root/'structured-review'
+        export_review(str(pdf_path),str(folder))
+        pages=import_review(folder)[0][1]
+        self.assertEqual('Four-Stroke Cycle > Intake Stroke',pages[1].section_paths['Intake Stroke'])
+        dest=self.root/'structured.dataeater'
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['build-reviewed',str(folder),'-o',str(dest)]),0)
+        with zipfile.ZipFile(dest) as z:
+            chunks=[json.loads(l) for l in z.read('chunks.jsonl').decode().splitlines()]
+            selected=[c for c in chunks if c['page']==2]
+            self.assertTrue(any(c.get('search_context')=='Four-Stroke Cycle > Intake Stroke' for c in selected))
+            self.assertTrue(all(' > ' not in c['text'] for c in selected))
+        manifest=json.loads((folder/'review.json').read_text())
+        manifest['documents'][0]['page_contexts']['2']['paths']={'Intake Stroke':{}}
+        (folder/'review.json').write_text(json.dumps(manifest))
+        with self.assertRaises(ValueError):import_review(folder)
+
     def test_modified_original_is_rejected(self):
         original = next((self.review/'original').glob('*.txt'))
         original.write_text(original.read_text()+'changed')

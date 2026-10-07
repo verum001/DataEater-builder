@@ -29,7 +29,7 @@ from .chunker import Chunk
 FORMAT_NAME = "dataeater"
 FORMAT_VERSION = 1
 
-BUILDER_VERSION = "0.2.0"
+BUILDER_VERSION = "0.3.0"
 
 MANIFEST_FILE = "manifest.json"
 SOURCES_FILE = "sources.json"
@@ -992,6 +992,7 @@ def render_chunks(chunks: List[Chunk]) -> str:
             "page": chunk.page_start,
             "lang": "en",
             "text": chunk.text,
+            "search_context": chunk.search_context,
         }
         lines.append(json.dumps(record, ensure_ascii=False))
     return "\n".join(lines) + ("\n" if lines else "")

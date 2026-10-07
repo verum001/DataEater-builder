@@ -20,6 +20,7 @@ PAGE NUMBERS ARE NEVER GUESSED
     a citation. A wrong page number is worse than no page number.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -38,6 +39,8 @@ class Page:
 
     number: int          # 1-based page number in the original document
     text: str
+    section_paths: dict = field(default_factory=dict)
+    default_section_path: str = ""
 
 
 @dataclass
@@ -50,6 +53,7 @@ class Chunk:
     section: str = ""
     source_id: str = ""
     chunk_id: str = ""
+    search_context: str = ""
 
 
 def looks_like_heading(line: str) -> bool:
@@ -61,9 +65,11 @@ def looks_like_heading(line: str) -> bool:
     """
     stripped = line.strip()
 
-    if not stripped or len(stripped) > 90:
+    if not stripped or len(stripped) > 90 or not any(c.isalpha() for c in stripped):
         return False
 
+    if any(symbol in stripped for symbol in "=×÷Ω") or stripped.lower() in {"if", "then", "where:", "where", "equation 1", "equation 2"}:
+        return False
     words = stripped.split()
     if len(words) > 14:
         return False
@@ -73,11 +79,14 @@ def looks_like_heading(line: str) -> bool:
         return True
 
     # "P0087 FUEL RAIL PRESSURE TOO LOW"  (shouting)
-    if stripped.isupper() and any(c.isalpha() for c in stripped):
+    if stripped.isupper() and sum(c.isalpha() for c in stripped) >= 4:
         return True
 
     # "Fuel Pressure Testing"  (Title Case, short, no ending punctuation)
-    if stripped.istitle() and not stripped.endswith("."):
+    title_words = re.findall(r"[^\W\d_]+(?:[’'][^\W\d_]+)?", stripped, re.UNICODE)
+    if (title_words and all(word[0].isupper() and word[1:].islower() for word in title_words)
+            and not stripped.endswith((".", ":")) and not any(c.isdigit() for c in stripped)
+            and (len(title_words) >= 2 or len(stripped) >= 5)):
         return True
 
     return False
@@ -99,22 +108,23 @@ def split_long_paragraph(paragraph: str, max_chars: int) -> List[str]:
     if len(paragraph) <= max_chars:
         return [paragraph]
 
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    # Preserve punctuation, decimal values and line/table boundaries. Oversized
+    # sentences are retained as a unit: silent truncation would lose warnings.
+    units = re.split(r"(?<=[.!?])\s+(?=[A-Z])|\n", paragraph)
     pieces: List[str] = []
     current = ""
-
-    # Keep the sentence terminator with the sentence it belongs to.
-    for part in paragraph.replace("\n", " ").split(". "):
-        sentence = part if part.endswith(".") else part + "."
-        if current and len(current) + len(sentence) + 1 > max_chars:
-            pieces.append(current.strip())
-            current = sentence
-        else:
-            current = (current + " " + sentence).strip()
-
+    for unit in units:
+        if not unit.strip():
+            continue
+        if current and len(current) + len(unit) + 1 > max_chars:
+            pieces.append(current)
+            current = ""
+        current = current + ("\n" if current else "") + unit
     if current:
-        pieces.append(current.strip())
-
-    return [p for p in pieces if p]
+        pieces.append(current)
+    return pieces
 
 
 def chunk_pages(
@@ -131,6 +141,7 @@ def chunk_pages(
     """
     chunks: List[Chunk] = []
     current_section = ""
+    current_context = ""
     counter = start_number
 
     buffer: List[str] = []
@@ -150,6 +161,7 @@ def chunk_pages(
                     page_start=min(buffer_pages),
                     page_end=max(buffer_pages),
                     section=current_section,
+                    search_context=current_context,
                     source_id=source_id,
                     chunk_id="c%03d" % counter,
                 )
@@ -159,27 +171,36 @@ def chunk_pages(
         buffer = []
         buffer_pages = []
 
+    def add_block(block: str, page_number: int) -> None:
+        for piece in split_long_paragraph(block, max_chars):
+            if buffer and sum(len(p) for p in buffer) + len(piece) + 2 * len(buffer) > target_chars:
+                flush()
+            buffer.append(piece)
+            buffer_pages.append(page_number)
+
     for page in pages:
-        blocks = split_paragraphs(page.text)
-
-        for block in blocks:
-            lines = [ln for ln in block.split("\n") if ln.strip()]
-
-            # A short block that looks like a title becomes the new section
-            # name, and it starts a new chunk so a heading is never buried
-            # in the middle of a long chunk.
-            if lines and len(block) < 120 and looks_like_heading(lines[0]):
-                if lines[0].strip() != current_section:
+        flush()
+        if page.default_section_path:
+            current_context = page.default_section_path
+            current_section = current_context.split(" > ")[-1]
+        for block in split_paragraphs(page.text):
+            segment: List[str] = []
+            # Plain PDF exports often have no empty line around a heading.
+            # Recognise conservative text headings without treating equations
+            # or short variables as chapters. Every line remains in the body.
+            for line in block.split("\n"):
+                normalized = " ".join(line.split())
+                if normalized in page.section_paths or (not page.section_paths and not page.default_section_path and looks_like_heading(line)):
+                    if segment:
+                        add_block("\n".join(segment), page.number)
                     flush()
-                    current_section = lines[0].strip()
-                continue
-
-            for piece in split_long_paragraph(block, max_chars):
-                if buffer and sum(len(p) for p in buffer) + len(piece) > target_chars:
-                    flush()
-
-                buffer.append(piece)
-                buffer_pages.append(page.number)
+                    current_section = line.strip()
+                    current_context = page.section_paths.get(normalized, current_context)
+                    segment = [line]
+                else:
+                    segment.append(line)
+            if segment:
+                add_block("\n".join(segment), page.number)
 
     flush()
 
@@ -196,7 +217,12 @@ def merge_short_chunks(chunks: List[Chunk], minimum_chars: int = 200) -> List[Ch
     merged: List[Chunk] = []
 
     for chunk in chunks:
-        if merged and len(merged[-1].text) < minimum_chars:
+        if (merged and len(merged[-1].text) < minimum_chars
+                and merged[-1].source_id == chunk.source_id
+                and merged[-1].section == chunk.section
+                and merged[-1].search_context == chunk.search_context
+                and merged[-1].page_end == chunk.page_start
+                and len(merged[-1].text) + len(chunk.text) + 2 <= DEFAULT_MAX_CHARS):
             previous = merged[-1]
             previous.text = previous.text + "\n\n" + chunk.text
             previous.page_end = max(previous.page_end, chunk.page_end)

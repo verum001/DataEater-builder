@@ -190,10 +190,29 @@ def extract_pdf(path: str) -> ExtractedDocument:
     try:
         total_pages = document.page_count
 
-        raw_pages = [
-            Page(number=index + 1, text=clean_text(page.get_text()))
-            for index, page in enumerate(document)
-        ]
+        # Publisher bookmarks provide real section ancestry, rather than an AI
+        # guess. Keep it as search metadata; never add it to document facts.
+        paths_by_page = {}
+        stack = []
+        for level, heading, number in document.get_toc():
+            if not (1 <= number <= total_pages):
+                continue
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            title = " ".join(heading.split())[:200]
+            stack.append((level, title))
+            path = " > ".join(title for _, title in stack)[:2000]
+            paths_by_page.setdefault(number, {})[title] = path
+        raw_pages = []
+        previous_path = ""
+        for index, page in enumerate(document):
+            number = index + 1
+            paths = paths_by_page.get(number, {})
+            text = clean_text("\n\n".join(block[4].strip() for block in page.get_text("blocks") if block[6] == 0 and block[4].strip()))
+            raw_pages.append(Page(number=number, text=text, section_paths=paths,
+                                  default_section_path=previous_path))
+            if paths:
+                previous_path = list(paths.values())[-1]
 
         # Keep only pages that actually carry text, but keep their real
         # numbers so citations stay correct.
