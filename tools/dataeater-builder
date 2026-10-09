@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Entry point for the DataEater Builder command line tool.
+
+Run it with the private virtual environment that holds PyMuPDF:
+
+    tools/.venv/bin/dataeater-builder build ./manuals -o out.dataeater
+
+This script re-launches itself with that environment's Python if it was
+started with the system one, so the tool works no matter how it is called
+and the system Python installation is never touched.
+"""
+
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+VENV = os.path.join(HERE, ".venv")
+VENV_PYTHON = os.path.join(VENV, "bin", "python3")
+
+if os.path.exists(VENV_PYTHON) and sys.prefix != VENV:
+    os.execv(VENV_PYTHON, [VENV_PYTHON, os.path.abspath(__file__)] + sys.argv[1:])
+
+sys.path.insert(0, HERE)
+
+from dataeater_builder.cli import main  # noqa: E402  (must follow the setup above)
+
+if __name__ == "__main__":
+    sys.exit(main())

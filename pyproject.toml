@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataeater-builder"
+version = "0.2.0"
+description = "Build Android-compatible DataEater databases with an offline PDF and LLM review workflow"
+requires-python = ">=3.10"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{name = "Jack"}]
+dependencies = ["pymupdf>=1.24", "cryptography>=42.0"]
+
+[project.scripts]
+dataeater-builder = "dataeater_builder.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["tools"]
+include = ["dataeater_builder*"]
