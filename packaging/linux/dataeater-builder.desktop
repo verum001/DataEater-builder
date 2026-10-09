@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=DataEater Builder
+Comment=Turn documents into offline knowledge databases
+Exec=dataeater-builder-gui
+Icon=dataeater-builder
+Terminal=false
+Categories=Utility;Office;
+Keywords=PDF;Documents;Knowledge;Database;DataEater;
+StartupNotify=false

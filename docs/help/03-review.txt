@@ -1,0 +1,21 @@
+Reviewing extracted text
+
+Use Prepare text review when PDF extraction needs checking or correction. Choose documents and a new review folder. Keep that folder outside your input document folder. Existing review folders cannot be overwritten because that could destroy checked edits.
+
+The package contains:
+
+original/ — untouched extracted batches.
+reviewed/ — editable copies of those batches.
+notes/ — a place for uncertainty notes.
+LLM_PROMPT.txt — instructions for a large LLM or human reviewer.
+review.json — source fingerprints, batch information and page metadata.
+
+Read LLM_PROMPT.txt. Give the prompt and one original batch to a chosen LLM only when you are allowed to share that document with the service. The desktop app never uploads it. The original PDF pages can help resolve extraction errors.
+
+Save the complete returned plain text over the matching file in reviewed/. Do not paste Markdown fences, introductory text or notes into that file. Keep every === PAGE n === marker exactly as supplied. Put uncertainties in notes/, then compare changes against the PDF. Never guess technical values or maintenance procedures.
+
+Batch size is approximate. Whole pages stay together, so a long page may exceed the selected size. If an LLM cannot return a complete batch, export a new review package with a smaller batch size; never accept a truncated response.
+
+Use Build reviewed text on the review folder after checking all edits. Original hashes and page-marker order are validated. Missing, duplicate, reordered or renumbered markers are rejected. Numeric changes are reported for review. These checks cannot prove a correction is technically accurate.
+
+Never use Build database on the whole review folder: it would mix original and edited text. Keep originals and review.json unchanged and use Build reviewed text instead.

@@ -29,7 +29,7 @@ from .chunker import Chunk
 FORMAT_NAME = "dataeater"
 FORMAT_VERSION = 1
 
-BUILDER_VERSION = "0.3.0"
+BUILDER_VERSION = "0.4.0"
 
 MANIFEST_FILE = "manifest.json"
 SOURCES_FILE = "sources.json"

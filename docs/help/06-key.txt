@@ -1,0 +1,9 @@
+Signing keys
+
+Create signing key makes an ECDSA P-256 private signing key. Save the .key file in a private location. Details displays its matching PUBLIC KEY, which is safe to publish and belongs in the locked database manifest.
+
+The key file itself is private. Do not attach it to a release, put it in Git, or send it to customers. Losing it prevents you from issuing new valid access codes for databases tied to its public key.
+
+By default an existing key cannot be replaced. Choose a different filename, or deliberately enable Replace existing signing key in Advanced options. The confirmation reminds you to retain the old key for existing databases. A new signing key does not match the public key stored in older database releases.
+
+The desktop does not remember key paths or key contents between launches. Browse to the relevant private key when issuing access codes.

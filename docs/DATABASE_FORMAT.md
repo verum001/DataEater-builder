@@ -12,7 +12,7 @@ everything you need, and the file is an ordinary ZIP you can read in a text edit
 What a database can contain is not limited by this app. Workshop manuals, board pinouts,
 man pages, recipes, commentaries, out-of-copyright books, a firm's internal service
 history — if it is text, it goes in. See
-[D-013](DECISIONS.md#d-013--dataeater-is-a-published-container-not-an-internal-format).
+[D-013](https://github.com/verum001/DataEater/blob/main/docs/DECISIONS.md#d-013--dataeater-is-a-published-container-not-an-internal-format).
 
 ---
 
@@ -216,7 +216,7 @@ them when it writes the file, and has a `verify` step.
 * **Mismatch** → the file was modified after it was built.
 * **This is detection, not protection.** A determined attacker can edit both the file and
   the manifest. Preventing that requires a signature over the manifest, which is designed
-  in [SECURITY.md](SECURITY.md) and not implemented yet.
+  in [SECURITY.md](https://github.com/verum001/DataEater/blob/main/docs/SECURITY.md) and not implemented yet.
 * **The app checks required knowledge files before opening them.** `sources.json`
   and `chunks.jsonl` are checked against their exact bytes before parsing; `payload.enc`
   is checked before decryption. A mismatch or missing/malformed fingerprint refuses

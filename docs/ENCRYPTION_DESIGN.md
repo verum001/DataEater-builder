@@ -18,9 +18,9 @@ a code the creator sent them.** Not a DRM platform.
 >
 > **Do not implement from this section as written.** Everything else here is
 > still accurate. For what is actually built, see
-> [SECURITY.md](SECURITY.md) and `packaging.py` / `DeviceKeys.kt`.
+> [SECURITY.md](https://github.com/verum001/DataEater/blob/main/docs/SECURITY.md) and `packaging.py` / `DeviceKeys.kt`.
 >
-> Reason and evidence: [SECURITY.md](SECURITY.md#the-one-bug-the-cross-language-tests-caught).
+> Reason and evidence: [SECURITY.md](https://github.com/verum001/DataEater/blob/main/docs/SECURITY.md#the-one-bug-the-cross-language-tests-caught).
 
 ---
 

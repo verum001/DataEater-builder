@@ -5,3 +5,5 @@
 - Optional external OCR tools are installed separately; no automatic OCR or LLM client is included.
 
 Input PDFs, images, text and database content retain their own rights. No real manuals or model weights are included in this repository.
+
+- Python/Tkinter and Tcl/Tk: supplied by the Linux distribution, not bundled. Python uses the PSF licence; Tcl/Tk uses its separate permissive terms. The GUI uses standard Tk widgets and an original icon; it includes no Codex code, branding or assets.

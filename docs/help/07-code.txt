@@ -1,0 +1,11 @@
+Device access codes
+
+The customer opens a locked database in DataEater and sends you the phone's Request Code. Issue access code requires that code, the locked database, its matching .secret content key and the private signing key corresponding to the database's public key.
+
+Choose Save access code to write a .lic file. Send that file to the customer; they save it in the DataEater/Lic folder in internal phone storage and select it in the app. The code works only on the phone that supplied the matching Request Code.
+
+Leaving Save access code blank displays the code in Details without creating a file. Copy details copies the full result, including the code. Treat access codes as private customer information and do not publish them in screenshots or releases.
+
+Expiry defaults to never. Advanced options accepts 30d, 90d, 1y or a date in YYYY-MM-DD form. Check the printed expiry and database identifier before sending the result. The Android app checks the licence; the builder does not contact a payment or customer service.
+
+If a phone cannot unlock the database, confirm the matching database version, content key, signing key, request code and expiry. A valid-looking code is not evidence that it belongs to the correct database or phone.

@@ -1,0 +1,11 @@
+Checking databases
+
+Check database reads a .dataeater file and verifies the format, manifest fingerprints and document/passage counts. Details shows the result, document names and a sample passage for an unlocked database.
+
+Oversized passages and exact repeated passages are reported as review clues. An oversized passage can be legitimate when a whole paragraph or table row must stay together. Repetition can come from repeated headers or genuinely repeated instructions. Do not remove content solely because it appears in this report.
+
+A correct fingerprint means the stored bytes match the manifest; it is not proof of factual accuracy, ownership, safe maintenance instructions or model answer quality. Test important questions against the original manual.
+
+Locked databases can be checked without exposing their text. Their readable manifest includes creator information, public signing key and encryption details. Plain document lists and passage previews are unavailable without decryption; this is expected.
+
+If checking fails, do not distribute the result. See Details for the error. A damaged archive, unexpected layout or mismatched fingerprint needs investigation or a fresh build from known-good documents.

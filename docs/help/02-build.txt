@@ -1,0 +1,17 @@
+Building databases
+
+Choose a single PDF, TXT, MD or Markdown file, or a folder. Subfolders are searched for supported documents. The builder extracts text, splits it into searchable passages and keeps source references. It does not train a model.
+
+The output is one .dataeater file. Database name and description identify it in the Android app. Language is a short code such as en or fr; it records the language and does not translate the text. Publisher identifies who produced the documents. Content licence describes your rights to those documents; Apache licensing of the builder does not grant rights to source material.
+
+Passage size is a target character count, normally 700. Larger passages give a model more context but can be harder for a small model to use. Smaller passages can lose nearby context. Whole paragraphs and table rows may exceed the target. Change this only after checking representative questions and citations on your phone.
+
+PDF limits
+
+A PDF that is a photograph of each page needs OCR before building. The builder does not run OCR automatically. OCRmyPDF with Tesseract is one option. Verify OCR results against the original, especially decimal points, minus signs, units and part identifiers.
+
+Pictures and diagrams are not embedded in the database. Relationships shown only by arrows, layout or illustrations are not reconstructed. A PDF with selectable text can still have broken reading order or missing table relationships. Check the extracted passages and consider text review before release.
+
+Blank or nearly blank PDF pages may be omitted, but the retained passages preserve original PDF page positions. Printed page labels inside a manual can differ from these PDF positions.
+
+Export review instead is a compatibility option for the older build --review command. It creates a review package and does not create the selected database output. Prepare text review is the clearer route for new work.

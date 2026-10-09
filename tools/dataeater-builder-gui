@@ -1,0 +1,13 @@
+#!/usr/bin/python3
+"""Source launcher: system Tk UI, optional private CLI dependency environment."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from dataeater_builder.desktop import main
+except ModuleNotFoundError as error:
+    if error.name == 'tkinter':
+        print('Install python3-tk with your Linux package manager, then run this launcher again.', file=sys.stderr)
+        raise SystemExit(1)
+    raise
+raise SystemExit(main())

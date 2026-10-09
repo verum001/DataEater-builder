@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 8 October 2026
+
+- Added a Linux desktop with a simple sidebar, focused forms and collapsed advanced options.
+- Covered every terminal command and option, including PDF/text review, encryption and device access codes.
+- Added background progress, cancellation, completed-output staging and ordinary output-move rollback.
+- Added offline help with workflow explanations, key management and troubleshooting.
+- Added Debian packaging with an application-menu entry, CLI and system-managed dependencies.
+- Preserved Android-compatible version 1 databases and the existing terminal workflow.
+
 ## 0.3.0 — 7 October 2026
 
 - Preserve content beneath short headings and standalone decimal values.

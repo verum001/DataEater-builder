@@ -1,0 +1,15 @@
+Protecting databases
+
+Protect database creates an encrypted copy of an existing, unlocked database. The original stays unchanged. You need a separate locked output filename.
+
+Create a signing key first. Its public key is safe to publish; paste it into Creator public key. The Android app uses this public key to verify access codes. Creator name and contact appear to the customer before unlocking.
+
+The content key is stored in a separate .secret file. By default it sits next to the locked output and uses the same name with the .secret extension. Choose a private location in Advanced options if you keep release files in a public folder.
+
+Only distribute the locked .dataeater file. Never distribute its .secret file or your private .key file. Keep secure backups of both keys. Anyone with the content key can decrypt the content; anyone with the signing key can sign access codes.
+
+An existing content key is reused unless Replace existing content key is enabled. Replacement creates a new key: access codes previously issued for the old encrypted content will not unlock the new copy. Save the old database and key if you still need to support it.
+
+The desktop asks for confirmation before replacing output files or deliberately changing a key. Failed or cancelled operations do not publish partial encrypted files. Ordinary cancellation removes staging files; sudden power loss can leave private temporary files beside the output folder.
+
+Encryption protects stored content and supports device-bound access. It does not stop someone with legitimate access from copying displayed information.

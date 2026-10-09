@@ -1,0 +1,19 @@
+Getting started
+
+DataEater Builder turns documents into a single .dataeater file for the Android app. All seven terminal commands are available from the sidebar. Work happens on your computer. The app has no LLM connection and sends no documents online.
+
+A quick first database
+
+1. Open Build database.
+2. Choose a PDF, text or Markdown file, or a folder containing documents.
+3. Enter a readable database name. This name appears in the Android app.
+4. Choose where to save the .dataeater file and press Build database.
+5. Read Details for warnings. Use Check database before sharing the file.
+
+Copy the result into the DataEater folder on your phone and select it in the Android app. Building the file does not install it on the phone automatically.
+
+The sidebar changes tasks. Advanced options contain settings you usually do not need. Details shows the full command result and errors; Copy details copies that text to your clipboard. It may contain document excerpts or access codes, so check it before sharing.
+
+The moving progress indicator means work is running. It is not a percentage or an estimate of completion time. Open result folder appears after a task creates files. F1 opens help; Escape cancels the current operation.
+
+Choose output folders you can write to. Cancelling or encountering an error leaves existing outputs untouched. Temporary files are cleaned after ordinary cancellation. An unexpected power loss can leave hidden .dataeater-* folders beside the chosen output; they may contain private document text or keys. After confirming no operation is running, delete any abandoned temporary folders.

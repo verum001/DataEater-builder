@@ -2,20 +2,47 @@
 
 Turn PDFs, text and Markdown into `.dataeater` knowledge databases for the DataEater Android app.
 
-**Currently supported on Linux only.**
+**A simple Linux desktop, with terminal commands when you need them.**
 
-The builder creates `.dataeater` databases; the Android app reads them.
+![DataEater Builder desktop](screenshots/builder-desktop.png)
 
-## Set up
+## Install the desktop
+
+Download `dataeater-builder_0.4.0_all.deb` from this repository's **Releases** page. Open it with your software installer, or run:
+
+```bash
+sudo apt install ./dataeater-builder_0.4.0_all.deb
+```
+
+Open **DataEater Builder** from your applications menu. The package targets Debian 13. Other Debian-family distributions need the required dependencies and are not yet tested.
+
+Choose **Build database**, select your documents, enter a name and save the result. Use **Check database** before sharing it. **? Help** explains every task offline.
+
+| Task | What it does |
+|---|---|
+| Build database | Turn PDF, TXT or Markdown into one database |
+| Prepare text review | Export editable text and an instruction prompt |
+| Build reviewed text | Build checked edits with original page references |
+| Check database | Verify fingerprints and inspect passages |
+| Protect database | Create an encrypted database |
+| Create signing key | Create a private key and its public key |
+| Issue access code | Unlock a protected database for one phone |
+
+Advanced options stay collapsed until needed. Work runs in the background with progress and cancellation. The desktop and terminal use the same engine and file format.
+
+See the [desktop guide](docs/GUI.md) for installation, screenshots, output safety and troubleshooting.
+
+## Terminal setup
 
 Python 3.10 or newer:
 
 ```bash
 python3 -m venv tools/.venv
 tools/.venv/bin/pip install -r tools/requirements.txt
+chmod +x tools/dataeater-builder tools/dataeater-builder-gui
 ```
 
-Run commands from this project folder. The launcher uses its own environment automatically.
+Run commands from this project folder. The terminal launcher uses its private environment automatically. To run the desktop from source, follow the [system Tk setup](docs/GUI.md#run-from-source).
 
 ## Build directly
 
@@ -24,64 +51,51 @@ tools/dataeater-builder build /path/to/manuals -o manual.dataeater --name "My Te
 tools/dataeater-builder inspect manual.dataeater
 ```
 
-Input can be one PDF, TXT or Markdown file, or a folder. PDF text is extracted locally.
-Scanned PDFs need OCR first. Images are not embedded in the resulting database.
+Input can be one PDF, TXT or Markdown file, or a folder. Scanned PDFs need OCR first. Images and diagram relationships are not reconstructed automatically.
 
-Clear extracted text does not need AI rewriting. The builder preserves headings,
-values and page boundaries automatically. PDF paragraphs and publisher bookmarks
-are retained for search, including section ancestry. Use `inspect` to see oversized or
-repeated passages. See [preparing text for small models](docs/SMALL_MODELS.md) and the
-[phone benchmark summary](docs/BENCHMARKS.md).
-Use the optional LLM review below for broken extraction or
-tables, and check every correction against the PDF.
+## Review extracted text
 
-## Improve extracted text with a large LLM
-
-1. Export editable text and an instruction prompt:
+1. Export editable batches and a prompt:
 
 ```bash
 tools/dataeater-builder review /path/to/manual.pdf -o exports/manual --batch-chars 30000
 ```
 
-2. Open `exports/manual/LLM_PROMPT.txt`. Give that prompt and **one file from `original/`** to your chosen LLM. If necessary, also provide the corresponding PDF pages. No upload happens automatically.
-3. Save the complete returned plain text over the matching file in `reviewed/`. Keep uncertainty notes in `notes/`. Check changes, especially numbers, units, warnings and part identifiers, against the PDF.
-4. Build the final database:
+2. Read `exports/manual/LLM_PROMPT.txt`. Give the prompt and one file from `original/` to your chosen LLM only when sharing that document is authorized. Nothing is uploaded automatically.
+3. Save the complete returned text over the matching file in `reviewed/`. Keep uncertainties in `notes/`. Check numbers, units, warnings and part identifiers against the PDF.
+4. Build the checked result:
 
 ```bash
 tools/dataeater-builder build-reviewed exports/manual -o manual.dataeater --name "My Technical Manuals"
 tools/dataeater-builder inspect manual.dataeater
 ```
 
-The export includes untouched originals, editable copies, source fingerprints and page metadata. Batches preserve whole pages. `build-reviewed` rejects missing files, changed originals and missing, duplicate, reordered or renumbered page markers. Original PDF page positions survive the round trip, even when blank pages are omitted.
+The prompt asks for extraction and formatting corrections, not rewriting, summaries or invented technical information. Original fingerprints and page markers are validated, but those checks do not prove technical accuracy. Keep `original/` and `review.json` unchanged. Never build directly from the entire export folder.
 
-The prompt asks the LLM to fix extraction and formatting, **not rewrite, summarize or invent technical information**. A valid page marker does not prove an answer or correction is accurate: check the reviewed text before sharing the database. Numeric changes are reported as a review reminder. Diagrams and their relationships are not reconstructed automatically.
+The same workflow is available through **Prepare text review → Build reviewed text** in the desktop.
 
-The older `build INPUT --review FOLDER -o ignored` syntax also creates this review package. Use `build-reviewed FOLDER` afterwards; building from an entire export folder would mix its originals and edited copies.
+## Documentation
 
-## Other commands
+- [Desktop and offline help](docs/GUI.md)
+- [Builder commands](docs/BUILDER.md)
+- [Database format](docs/DATABASE_FORMAT.md)
+- [Encryption and access codes](docs/ENCRYPTION_DESIGN.md)
+- [Release notes](docs/RELEASE_NOTES_0.4.0.md)
+- [GitHub publication](docs/PUBLISHING.md)
 
-- `encrypt`: create a database protected by device-bound access codes.
-- `create-key`: create the publisher signing key.
-- `licence`: issue an access code for a customer device.
-- `inspect`: verify fingerprints and inspect the database.
-
-See [builder commands](docs/BUILDER.md), [database format](docs/DATABASE_FORMAT.md) and [encryption](docs/ENCRYPTION_DESIGN.md). Store creator keys and content secrets privately.
-
-## Tests
+## Tests and packages
 
 ```bash
 for test in tools/tests/test_*.py; do tools/.venv/bin/python "$test" || exit; done
+python3 packaging/linux/build_deb.py
 ```
 
-Tests cover chunking, encryption, licensing, hostile archives and the PDF/edit/database round trip. Android integration tests remain in the app project.
-
-## GitHub publication
-
-This folder has its own Git history. Publish only tracked source, tests and documentation. `tools/.venv`, input PDFs, real document exports, output databases and signing keys are excluded. See [publication checklist](docs/PUBLISHING.md).
+Tests cover passage preservation, reviewed PDF round trips, encryption, licensing, archive validation and desktop command parity, cancellation and output rollback. The [desktop guide](docs/GUI.md#development-checks) explains graphical smoke testing.
 
 ## License
 
-Copyright 2026 Jack. Original builder code and documentation: [Apache 2.0](LICENSE).
-PyMuPDF/MuPDF uses AGPLv3 or a commercial license; using or distributing the PDF-enabled builder must comply with those terms. Apache licensing of our code does not override dependency obligations. See [third-party notices](THIRD_PARTY_NOTICES.md).
+Copyright 2026 Jack. Original code and documentation: [Apache 2.0](LICENSE).
 
-Input documents and resulting database content retain their own rights. Only share material you have permission to distribute, and only send documents to an external LLM when authorized.
+PyMuPDF/MuPDF uses AGPLv3 or a commercial licence. Apache licensing of original code does not override dependency obligations. The Debian package does not bundle dependency binaries. See [third-party notices](THIRD_PARTY_NOTICES.md).
+
+Input documents and database content retain their own rights. Only share material you have permission to distribute.

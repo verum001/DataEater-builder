@@ -1,0 +1,17 @@
+Troubleshooting and privacy
+
+Nothing extracted: the PDF may be scanned or blank. Run OCR separately and check the text. A PDF with selectable text can still need manual review.
+
+Review validation failed: check the error in Details. Restore original/ and review.json from a clean export, preserve all page markers in reviewed/, and do not combine batches or add commentary. Do not bypass validation by building the entire export directory.
+
+Permission denied: choose an output folder you own and can write to. Existing output files must also be replaceable. Private key files should have restricted permissions.
+
+The operation seems slow: large PDFs and encryption may take time. Details reports document-level activity. The progress indicator does not claim a percentage. Cancel stops the worker and preserves previous output files. If the operation is finishing its final file moves, cancellation may be unavailable briefly.
+
+Desktop does not open: launch dataeater-builder-gui from a terminal in a Linux graphical session to see the error. Check that python3-tk is installed. The .deb relies on system-managed Python, PDF and encryption packages. Install it with apt so dependencies are resolved. Do not use sudo to start the desktop.
+
+The .deb targets Debian 13. Other Debian-family distributions need the named dependencies at the required versions. Windows and macOS are not tested; this release is for Linux.
+
+No telemetry, accounts, model API or automatic upload is included. The desktop does not save form history or logs. Details can show a document excerpt, key path or customer access code; review it before copying or taking screenshots. File managers and clipboard tools may keep their own history.
+
+Original builder code is Apache 2.0. PDF support depends on PyMuPDF/MuPDF under its separate AGPL/commercial terms. Source documents and database content keep their own rights. Only distribute content you are allowed to share.
