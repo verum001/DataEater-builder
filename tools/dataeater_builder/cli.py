@@ -233,6 +233,17 @@ def command_inspect(arguments: argparse.Namespace) -> int:
         lines = [line for line in chunk_text.splitlines() if line.strip()]
         if lines:
             import json as _json
+            texts = [_json.loads(line).get("text", "") for line in lines]
+            long_count = sum(len(text) > 1200 for text in texts)
+            duplicates = len(texts) - len(set(texts))
+            print("Passage quality")
+            print("  oversized passages (>1200 characters): %d" % long_count)
+            print("  exact repeated passages: %d" % duplicates)
+            if long_count:
+                print("  Review long paragraphs/table rows against the original before editing.")
+            print("  These checks do not verify technical accuracy or diagram relationships.")
+            print()
+            import json as _json
             first = _json.loads(lines[0])
             print("First chunk")
             print(textwrap.indent(textwrap.fill(first.get("text", ""), 78), "  "))

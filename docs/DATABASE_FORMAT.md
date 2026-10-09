@@ -286,3 +286,14 @@ a computer with no phone involved.
 | Manifest signature (proving who built the file) | designed, not built |
 | Reading the format needs DataEater | **never** — see rule 9 |
 | Indexing for very large databases | planned — the demo has 21 chunks and does not need one |
+
+### Optional search context (builder 0.3.0)
+
+A chunk may include `search_context`, a string containing its publisher-provided
+bookmark ancestry. The app indexes these labels to find subsections, while the
+answer prompt receives only the chunk text and its leaf section/page citation.
+This field is not new technical evidence or an AI summary. Older format-1 readers
+ignore it; databases without it remain compatible. Text/PDFs without bookmarks
+retain conservative heading detection. Publisher metadata does not certify accuracy.
+Review manifests may include optional `page_contexts` carrying the same ancestry;
+the importer validates their types/lengths and preserves them after edited text import.

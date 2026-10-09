@@ -27,6 +27,14 @@ tools/dataeater-builder inspect manual.dataeater
 Input can be one PDF, TXT or Markdown file, or a folder. PDF text is extracted locally.
 Scanned PDFs need OCR first. Images are not embedded in the resulting database.
 
+Clear extracted text does not need AI rewriting. The builder preserves headings,
+values and page boundaries automatically. PDF paragraphs and publisher bookmarks
+are retained for search, including section ancestry. Use `inspect` to see oversized or
+repeated passages. See [preparing text for small models](docs/SMALL_MODELS.md) and the
+[phone benchmark summary](docs/BENCHMARKS.md).
+Use the optional LLM review below for broken extraction or
+tables, and check every correction against the PDF.
+
 ## Improve extracted text with a large LLM
 
 1. Export editable text and an instruction prompt:
@@ -69,7 +77,7 @@ Tests cover chunking, encryption, licensing, hostile archives and the PDF/edit/d
 
 ## GitHub publication
 
-This folder has its own Git history. Publish only tracked source, tests and documentation. `tools/.venv`, input PDFs, real document exports, output databases and signing keys are excluded. No remote repository is configured or uploaded by the assistant. See [publication checklist](docs/PUBLISHING.md).
+This folder has its own Git history. Publish only tracked source, tests and documentation. `tools/.venv`, input PDFs, real document exports, output databases and signing keys are excluded. See [publication checklist](docs/PUBLISHING.md).
 
 ## License
 
