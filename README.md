@@ -8,10 +8,18 @@ Turn PDFs, text and Markdown into `.dataeater` knowledge databases for the DataE
 
 ## Install the desktop
 
-Download `dataeater-builder_0.4.0_all.deb` from this repository's **Releases** page. Open it with your software installer, or run:
+The 0.4.0 desktop source is available in this repository. A 0.4.0 binary package
+has not yet been attached to GitHub Releases. Run it from source using the
+[desktop guide](docs/GUI.md#run-from-source), or build a Debian package:
 
 ```bash
-sudo apt install ./dataeater-builder_0.4.0_all.deb
+python3 packaging/linux/build_deb.py
+```
+
+Then open `dist/dataeater-builder_0.4.0_all.deb` with your software installer, or run:
+
+```bash
+sudo apt install ./dist/dataeater-builder_0.4.0_all.deb
 ```
 
 Open **DataEater Builder** from your applications menu. The package targets Debian 13. Other Debian-family distributions need the required dependencies and are not yet tested.
