@@ -97,7 +97,7 @@ def test_locked_database_does_not_crash():
         input_path=plain, output_path=locked,
         creator="Northgate Technical Publishing",
         contact="licences@northgate.example",
-        creator_public_key="MCowBQYDK2VwAyEABT10elTfT5weCVJPjP4gFWXuDq",
+        creator_public_key="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUadYCDOJjqGxg8vXNQpAmQeMbvHB4Y6XDNdoMDXyXn0BEFInErC1p8/wgWhUhphKlOaDHtrEbnNg+p2DSnqBoQ==",
     )
 
     code, out, err = run_inspect(locked)
@@ -138,7 +138,7 @@ def test_it_shows_the_creator_details():
         input_path=plain, output_path=locked,
         creator="Northgate Technical Publishing",
         contact="licences@northgate.example",
-        creator_public_key="MCowBQYDK2VwAyEABT10elTfT5weCVJPjP4gFWXuDq",
+        creator_public_key="MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUadYCDOJjqGxg8vXNQpAmQeMbvHB4Y6XDNdoMDXyXn0BEFInErC1p8/wgWhUhphKlOaDHtrEbnNg+p2DSnqBoQ==",
     )
 
     _, out, _ = run_inspect(locked)

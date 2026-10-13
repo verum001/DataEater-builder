@@ -1,3 +1,10 @@
+## 0.4.1 — 13 October 2026
+
+Bounded package inspection, mandatory integrity checks before encryption, strict
+database IDs and fingerprint-bound licence issuance. Issuance verifies content
+and signing keys; private record writes are atomic and owner-only.
+See [the security audit](docs/SECURITY_AUDIT_2026-10-13.md).
+
 # Changelog
 
 ## 0.4.0 — 8 October 2026

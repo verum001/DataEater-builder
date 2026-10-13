@@ -56,7 +56,7 @@ def check(name, ok, detail=""):
         failures.append(name)
 
 
-def make_locked_database(folder):
+def make_locked_database(folder, creator_public_key):
     """A real plain database, then a real locked one, through the CLI."""
     from dataeater_builder.chunker import Chunk as _Chunk
 
@@ -83,7 +83,7 @@ def make_locked_database(folder):
 
     locked = os.path.join(folder, "locked.dataeater")
     subprocess.run([sys.executable, BUILDER, "encrypt", plain, "-o", locked,
-                    "--secret", os.path.join(folder, "locked.secret")],
+                    "--secret", os.path.join(folder, "locked.secret"), "--creator-public-key", creator_public_key],
                    capture_output=True, check=True)
     return plain, locked, os.path.join(folder, "locked.secret")
 
@@ -182,8 +182,9 @@ def test_expiry_parsing():
 def test_the_whole_journey():
     print("a customer's full journey")
     work = tempfile.mkdtemp(prefix="de_lic_")
-    plain, locked, secret = make_locked_database(work)
     key_path = make_creator_key(work)
+    public = packaging.read_creator_key_file(key_path)[1]
+    plain, locked, secret = make_locked_database(work, public)
 
     customer_phone = packaging.generate_device_keypair()
     request_code = packaging.make_request_code(customer_phone.public_key())
@@ -229,8 +230,9 @@ def test_the_whole_journey():
 def test_never_expires_by_default():
     print("never expires is the default")
     work = tempfile.mkdtemp(prefix="de_lic_")
-    plain, locked, secret = make_locked_database(work)
     key_path = make_creator_key(work)
+    public = packaging.read_creator_key_file(key_path)[1]
+    plain, locked, secret = make_locked_database(work, public)
     phone = packaging.generate_device_keypair()
 
     result = subprocess.run(
@@ -249,8 +251,9 @@ def test_never_expires_by_default():
 def test_a_customer_cannot_edit_their_licence():
     print("a customer cannot change what they were given")
     work = tempfile.mkdtemp(prefix="de_lic_")
-    plain, locked, secret = make_locked_database(work)
     key_path = make_creator_key(work)
+    public = packaging.read_creator_key_file(key_path)[1]
+    plain, locked, secret = make_locked_database(work, public)
     phone = packaging.generate_device_keypair()
 
     licence = packaging.sign_licence(
@@ -296,8 +299,9 @@ def test_a_customer_cannot_edit_their_licence():
 def test_licences_are_device_specific():
     print("each licence works on its own device only")
     work = tempfile.mkdtemp(prefix="de_lic_")
-    plain, locked, secret = make_locked_database(work)
     key_path = make_creator_key(work)
+    public = packaging.read_creator_key_file(key_path)[1]
+    plain, locked, secret = make_locked_database(work, public)
     key = packaging.read_secret_file(secret)
     signer = packaging.read_creator_key_file(key_path)[0]
 
@@ -322,8 +326,9 @@ def test_licences_are_device_specific():
 def test_bad_input_is_reported_clearly():
     print("bad input is explained, not crashed on")
     work = tempfile.mkdtemp(prefix="de_lic_")
-    plain, locked, secret = make_locked_database(work)
     key_path = make_creator_key(work)
+    public = packaging.read_creator_key_file(key_path)[1]
+    plain, locked, secret = make_locked_database(work, public)
     phone = packaging.generate_device_keypair()
 
     base = [sys.executable, BUILDER, "licence", locked,

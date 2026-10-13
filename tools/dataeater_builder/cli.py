@@ -170,28 +170,15 @@ def command_inspect(arguments: argparse.Namespace) -> int:
     is still readable and still worth checking.
     """
     problems = packaging.verify_database(arguments.database)
-    if problems and "not a readable ZIP" in problems[0]:
-        print(problems[0], file=sys.stderr)
+    if problems:
+        for problem in problems:
+            print(problem, file=sys.stderr)
         return 1
-
-    import json
-    import zipfile
-
-    with zipfile.ZipFile(arguments.database) as archive:
-        manifest = json.loads(archive.read(packaging.MANIFEST_FILE).decode("utf-8"))
-
-        encryption = (manifest.get("encryption") or "none").strip()
-        locked = bool(encryption) and encryption.lower() != "none"
-
-        # A locked database has no sources.json and no chunks.jsonl. Asking
-        # for them anyway produced a raw Python traceback, which tells the
-        # creator nothing. They are replaced by one encrypted payload.
-        if locked:
-            sources = []
-            chunk_text = ""
-        else:
-            sources = json.loads(archive.read(packaging.SOURCES_FILE).decode("utf-8"))
-            chunk_text = archive.read(packaging.CHUNKS_FILE).decode("utf-8")
+    manifest, data = packaging.read_package(arguments.database)
+    encryption = manifest.get("encryption", "none")
+    locked = encryption != "none"
+    sources = [] if locked else json.loads(data[packaging.SOURCES_FILE].decode("utf-8"))
+    chunk_text = "" if locked else data[packaging.CHUNKS_FILE].decode("utf-8")
 
     print("Database : %s" % os.path.basename(arguments.database))
     print("  name            %s" % manifest.get("name"))
@@ -370,20 +357,23 @@ def command_licence(arguments: argparse.Namespace) -> int:
         print("Cannot issue a licence: %s" % problem, file=sys.stderr)
         return 1
 
-    with zipfile.ZipFile(arguments.database) as archive:
-        manifest = json.loads(archive.read(packaging.MANIFEST_FILE).decode("utf-8"))
-    if manifest.get("encryption") in (None, "", "none"):
-        print("That database is not encrypted, so it needs no licence.",
-              file=sys.stderr)
+    try:
+        manifest, data = packaging.read_package(arguments.database)
+        if manifest.get("encryption") != packaging.ENCRYPTION_NAME:
+            raise ValueError("That database is not encrypted, so it needs no licence.")
+        public = packaging.read_creator_public_key(manifest.get("creator_public_key", ""))
+        if signing_key.public_key().public_numbers() != public.public_numbers():
+            raise ValueError("This creator key does not match the database.")
+        packaging.decrypt_payload(packaging.EncryptedPayload(packaging._decode64(manifest["payload_nonce"]), data[packaging.PAYLOAD_FILE]), content_key)
+        licence = packaging.build_licence(content_key=content_key, device_public_key=device_public_key,
+            expiry=expiry, database_id=manifest["database_id"], database_fingerprint=packaging.database_fingerprint(manifest))
+        licence = packaging.sign_licence(licence, signing_key)
+    except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile) as problem:
+        print("Cannot issue a licence: %s" % problem, file=sys.stderr)
         return 1
-
-    licence = packaging.build_licence(
-        content_key=content_key,
-        device_public_key=device_public_key,
-        expiry=expiry,
-        database_id=manifest.get("database_id", ""),
-    )
-    licence = packaging.sign_licence(licence, signing_key)
+    except Exception:
+        print("Cannot issue a licence: the supplied content key does not decrypt this database.", file=sys.stderr)
+        return 1
     code = packaging.encode_licence(licence)
 
     written_to = arguments.output

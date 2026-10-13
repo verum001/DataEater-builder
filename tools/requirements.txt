@@ -24,4 +24,4 @@ pymupdf>=1.24
 # refuses to encrypt and prints an error telling you to install this file —
 # which could not help, because this line was missing. Found by building a
 # clean virtualenv from this file and running the tests in it.
-cryptography>=42.0
+cryptography>=43.0

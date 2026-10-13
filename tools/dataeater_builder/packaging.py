@@ -29,7 +29,7 @@ from .chunker import Chunk
 FORMAT_NAME = "dataeater"
 FORMAT_VERSION = 1
 
-BUILDER_VERSION = "0.4.0"
+BUILDER_VERSION = "0.4.1"
 
 MANIFEST_FILE = "manifest.json"
 SOURCES_FILE = "sources.json"
@@ -158,16 +158,20 @@ def decrypt_payload(payload: EncryptedPayload, content_key: bytes) -> dict:
 
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+    if len(payload.nonce) != 12 or len(payload.ciphertext) < 16:
+        raise ValueError("Invalid encrypted payload lengths.")
     envelope = AESGCM(content_key).decrypt(payload.nonce, payload.ciphertext, None)
-    result = json.loads(envelope.decode("utf-8"))
+    result = _json_loads(envelope.decode("utf-8"))
 
-    if result.get("format") != PAYLOAD_FORMAT:
+    if not isinstance(result, dict) or result.get("format") != PAYLOAD_FORMAT:
         raise ValueError("This is not a DataEater payload (format=%r)."
                          % result.get("format"))
-    if result.get("version") != PAYLOAD_VERSION:
+    if type(result.get("version")) is not int or result["version"] != PAYLOAD_VERSION:
         raise ValueError("Payload version is %r, expected %r."
                          % (result.get("version"), PAYLOAD_VERSION))
 
+    if not isinstance(result.get("sources"), str) or not isinstance(result.get("chunks"), str):
+        raise ValueError("Invalid payload text fields.")
     return {"sources": result["sources"], "chunks": result["chunks"]}
 
 
@@ -216,6 +220,8 @@ def decrypt_payload(payload: EncryptedPayload, content_key: bytes) -> dict:
 # manual lands near 17 MB.
 MAX_ENTRY_BYTES = 32 * 1024 * 1024       # per file inside the package
 MAX_ENTRIES = 10_000
+MAX_SCAN_BYTES = 64 * 1024 * 1024
+MAX_PACKAGE_BYTES = 128 * 1024 * 1024
 
 
 def read_entry_capped(archive: zipfile.ZipFile, name: str, where: str) -> bytes:
@@ -223,9 +229,12 @@ def read_entry_capped(archive: zipfile.ZipFile, name: str, where: str) -> bytes:
 
     :raises ValueError: if the entry is larger than the limit
     """
+    info = name if isinstance(name, zipfile.ZipInfo) else archive.getinfo(name)
+    if info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED) or info.flag_bits & 1:
+        raise ValueError("Unsupported ZIP compression or ZIP-level encryption.")
     total = 0
     chunks = []
-    with archive.open(name) as stream:
+    with archive.open(info) as stream:
         while True:
             block = stream.read(64 * 1024)
             if not block:
@@ -247,6 +256,8 @@ def check_entry_count(names, where: str) -> None:
 
     :raises ValueError: if there are more than MAX_ENTRIES
     """
+    if len(names) != len(set(names)):
+        raise ValueError("Duplicate ZIP entries are not permitted.")
     if len(names) > MAX_ENTRIES:
         raise ValueError(
             "'%s' has %d files inside it, more than the %d any real database "
@@ -255,44 +266,113 @@ def check_entry_count(names, where: str) -> None:
         )
 
 
-def read_database_texts(path: str) -> dict:
-    """Read the two text files out of a plain `.dataeater` file.
+def _json_loads(text):
+    if isinstance(text, bytes):
+        text = text.decode("utf-8")
+    depth = 0; quoted = False; escaped = False; tokens = 0
+    for c in text:
+        if quoted:
+            if escaped: escaped = False
+            elif c == "\\": escaped = True
+            elif c == '"': quoted = False
+        elif c == '"': quoted = True
+        elif c in "{[":
+            depth += 1; tokens += 1
+            if depth > 32: raise ValueError("JSON is too deeply nested.")
+        elif c in "}]": depth -= 1; tokens += 1
+        elif c in ",:": tokens += 1
+        if tokens > 100000: raise ValueError("JSON structure is too complex.")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result: raise ValueError("Duplicate JSON field names are not permitted.")
+            result[key] = value
+        return result
+    return json.loads(text, object_pairs_hook=unique)
 
-    :raises ValueError: if the file is missing something or already locked
-    """
-    try:
-        archive = zipfile.ZipFile(path)
-    except zipfile.BadZipFile:
-        raise ValueError("Not a .dataeater file: it is not a ZIP archive.")
 
-    with archive:
+def require_database_id(value):
+    if not isinstance(value, str) or not value.strip() or value != value.strip() or len(value) > 256 or value in (".", "..") or any(ord(c) < 32 or 127 <= ord(c) <= 159 or c in "/\\" for c in value):
+        raise ValueError("The database identifier is missing or ambiguous.")
+    value.encode("utf-8")
+    if len(value.encode("utf-16-le")) // 2 > 256:
+        raise ValueError("The database identifier is too long.")
+    return value
+
+
+def _decode64(value):
+    if not isinstance(value, str):
+        raise ValueError("Expected base64 text.")
+    if len(value) > 65536:
+        raise ValueError("Base64 field is too large.")
+    return base64.b64decode("".join(value.split()), validate=True)
+
+
+def database_fingerprint(manifest):
+    require_database_id(manifest.get("database_id"))
+    if manifest.get("format") != FORMAT_NAME or type(manifest.get("format_version")) is not int or manifest["format_version"] != 1 or manifest.get("encryption") != ENCRYPTION_NAME:
+        raise ValueError("Unsupported encrypted database format.")
+    if not isinstance(manifest.get("payload_nonce"), str) or len(manifest["payload_nonce"]) > 128 or not isinstance(manifest.get("creator_public_key", ""), str) or len(manifest.get("creator_public_key", "")) > 2048:
+        raise ValueError("Invalid manifest cryptographic fields.")
+    nonce = _decode64(manifest["payload_nonce"])
+    if len(nonce) != 12:
+        raise ValueError("Invalid database nonce.")
+    digest = manifest["files"][PAYLOAD_FILE]["sha256"]
+    import re
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError("Invalid encrypted payload fingerprint.")
+    canonical = {"database_id": manifest["database_id"], "format_version": 1, "encryption": ENCRYPTION_NAME,
+        "creator_public_key": base64.b64encode(_decode64(manifest.get("creator_public_key", ""))).decode("ascii"),
+        "payload_nonce": base64.b64encode(nonce).decode("ascii"), "payload_sha256": digest}
+    return "sha256:" + hashlib.sha256(_licence_signing_bytes(canonical)).hexdigest()
+
+
+def read_package(path):
+    """One bounded scan, including unknown entries, before any consumer uses bytes."""
+    if os.path.getsize(path) > MAX_PACKAGE_BYTES:
+        raise ValueError("This database archive is too large to open safely.")
+    with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         check_entry_count(names, path)
+        if not names or names[0] != MANIFEST_FILE:
+            raise ValueError("manifest.json must be the first file in the archive.")
+        data = {}; total = 0
+        for entry in archive.infolist():
+            value = read_entry_capped(archive, entry, path)
+            total += len(value)
+            if total > MAX_SCAN_BYTES:
+                raise ValueError("This database expands beyond the total scan limit.")
+            if not entry.is_dir():
+                data[entry.filename] = value
+        manifest = _json_loads(data[MANIFEST_FILE].decode("utf-8"))
+        if not isinstance(manifest, dict) or manifest.get("format") != FORMAT_NAME or type(manifest.get("format_version")) is not int or manifest["format_version"] != FORMAT_VERSION:
+            raise ValueError("Unsupported database manifest format.")
+        require_database_id(manifest.get("database_id"))
+        encryption = manifest.get("encryption", "none")
+        if encryption not in ("none", ENCRYPTION_NAME):
+            raise ValueError("Unsupported database encryption.")
+        required = [PAYLOAD_FILE] if encryption == ENCRYPTION_NAME else [SOURCES_FILE, CHUNKS_FILE]
+        files = manifest.get("files")
+        if not isinstance(files, dict):
+            raise ValueError("Missing database fingerprints.")
+        import re
+        for name in set(required) | set(files):
+            record = files.get(name)
+            expected = record.get("sha256") if isinstance(record, dict) else None
+            if name not in data or not isinstance(expected, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected):
+                raise ValueError("Missing file or fingerprint: " + str(name))
+            if "sha256:" + hashlib.sha256(data[name]).hexdigest() != expected:
+                raise ValueError("Fingerprint mismatch for " + str(name))
+        if encryption == ENCRYPTION_NAME:
+            database_fingerprint(manifest)
+        return manifest, data
 
-        # The lock is checked FIRST, because "already encrypted" is a much
-        # more useful thing to tell the user than "chunks.jsonl is missing",
-        # which is what a locked database also looks like from the outside.
-        if MANIFEST_FILE in names:
-            manifest = json.loads(
-                read_entry_capped(archive, MANIFEST_FILE, path).decode("utf-8"))
-            if manifest.get("encryption") not in (None, "", "none"):
-                raise ValueError(
-                    "This database is already encrypted (%r). It cannot be "
-                    "encrypted twice." % manifest.get("encryption")
-                )
 
-        for required in (MANIFEST_FILE, SOURCES_FILE, CHUNKS_FILE):
-            if required not in names:
-                raise ValueError(
-                    "'%s' is not a plain database: it has no %s."
-                    % (os.path.basename(path), required)
-                )
-
-        return {
-            "manifest": manifest,
-            "sources": read_entry_capped(archive, SOURCES_FILE, path).decode("utf-8"),
-            "chunks": read_entry_capped(archive, CHUNKS_FILE, path).decode("utf-8"),
-        }
+def read_database_texts(path: str) -> dict:
+    manifest, data = read_package(path)
+    if manifest.get("encryption", "none") != "none":
+        raise ValueError("This database is already encrypted. It cannot be encrypted twice.")
+    return {"manifest": manifest, "sources": data[SOURCES_FILE].decode("utf-8"), "chunks": data[CHUNKS_FILE].decode("utf-8")}
 
 
 def encrypt_database_file(
@@ -324,6 +404,8 @@ def encrypt_database_file(
     texts = read_database_texts(input_path)
     manifest = texts["manifest"]
 
+    if creator_public_key:
+        read_creator_public_key(creator_public_key)
     payload = encrypt_payload(texts["chunks"], texts["sources"], content_key)
 
     # A copy of the public manifest with the lock applied. The old entries
@@ -364,12 +446,17 @@ def read_secret_file(path: str) -> bytes:
     a database.
     """
     with open(path, "r", encoding="utf-8") as handle:
-        record = json.load(handle)
+        record = _json_loads(handle.read(65537))
 
     if record.get("format") != "dataeater-secret":
         raise ValueError("'%s' is not a DataEater secret file." % path)
 
-    return base64.b64decode(record["content_key"])
+    if record.get("version") != 1:
+        raise ValueError("Unsupported secret version.")
+    key = _decode64(record["content_key"])
+    if len(key) != CONTENT_KEY_BYTES:
+        raise ValueError("Content keys must be 32 bytes.")
+    return key
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +534,7 @@ def read_request_code(text: str):
         raise ValueError("The Unlock Request Code is empty.")
 
     try:
-        der = base64.b64decode(text)
+        der = _decode64(text)
     except Exception:
         raise ValueError("The Unlock Request Code is not valid base64.")
 
@@ -472,6 +559,7 @@ def build_licence(
     expiry: str = None,
     database_id: str = "",
     extra: dict = None,
+    database_fingerprint: str = None,
 ) -> dict:
     """Make a device-specific, optionally time-limited licence.
 
@@ -480,6 +568,7 @@ def build_licence(
     :param expiry:          an ISO date string, or None for "never"
     :returns: a JSON-serialisable licence. Not yet signed - see sign_licence.
     """
+    require_database_id(database_id)
     wrap = wrap_content_key(content_key, device_public_key)
 
     licence = {
@@ -491,6 +580,11 @@ def build_licence(
         "expiry": expiry,
         "wrap": wrap,
     }
+    if database_fingerprint is not None:
+        import re
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", database_fingerprint):
+            raise ValueError("Invalid database binding fingerprint.")
+        licence["database_fingerprint"] = database_fingerprint
     if extra:
         licence["extra"] = extra
     return licence
@@ -565,10 +659,10 @@ def verify_licence(licence: dict, creator_public_key) -> bool:
     if "signature" not in licence:
         raise ValueError("This licence has no signature.")
 
-    if not isinstance(creator_public_key, ec.EllipticCurvePublicKey):
+    if not isinstance(creator_public_key, ec.EllipticCurvePublicKey) or not isinstance(creator_public_key.curve, ec.SECP256R1):
         raise ValueError("The creator key is not an EC public key.")
 
-    signature = base64.b64decode(licence["signature"])
+    signature = _decode64(licence["signature"])
     try:
         creator_public_key.verify(
             signature,
@@ -615,12 +709,7 @@ def write_creator_key_file(path: str, private_key, public_key) -> str:
             "send it to a customer, and keep a backup somewhere safe."
         ),
     }
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(record, handle, indent=2)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    _write_private_record(path, record)
 
     return record["public_key"]
 
@@ -635,13 +724,16 @@ def read_creator_key_file(path: str):
     _, serialization, _, _, _ = _import_crypto()
 
     with open(path, "r", encoding="utf-8") as handle:
-        record = json.load(handle)
+        record = _json_loads(handle.read(65537))
 
     if record.get("format") != "dataeater-creator-key":
         raise ValueError("'%s' is not a DataEater creator key file." % path)
 
-    private = serialization.load_der_private_key(
-        base64.b64decode(record["private_key"]), password=None)
+    private = serialization.load_der_private_key(_decode64(record["private_key"]), password=None)
+    from cryptography.hazmat.primitives.asymmetric import ec
+    public = read_creator_public_key(record["public_key"])
+    if not isinstance(private, ec.EllipticCurvePrivateKey) or not isinstance(private.curve, ec.SECP256R1) or private.public_key().public_numbers() != public.public_numbers() or record.get("version") != 1:
+        raise ValueError("Invalid or mismatched creator key pair.")
     return private, record["public_key"]
 
 
@@ -654,7 +746,7 @@ def read_creator_public_key(text: str):
     _, serialization, _, _, _ = _import_crypto()
     from cryptography.hazmat.primitives.asymmetric import ec
 
-    key = serialization.load_der_public_key(base64.b64decode(text.strip()))
+    key = serialization.load_der_public_key(_decode64(text))
     if not isinstance(key, ec.EllipticCurvePublicKey):
         raise ValueError("That is not an EC creator public key.")
     if not isinstance(key.curve, ec.SECP256R1):
@@ -723,15 +815,32 @@ def decode_licence(text: str) -> dict:
         raise ValueError("The Unlock Code is empty.")
 
     try:
-        licence = json.loads(base64.b64decode(cleaned).decode("utf-8"))
+        if len(cleaned) > 65536:
+            raise ValueError("This Unlock Code is too large.")
+        licence = _json_loads(_decode64(cleaned).decode("utf-8"))
     except Exception:
         raise ValueError("The Unlock Code could not be read.")
 
-    if licence.get("format") != LICENCE_FORMAT:
+    if not isinstance(licence, dict) or licence.get("format") != LICENCE_FORMAT:
         raise ValueError("This is not a DataEater Unlock Code.")
-    if licence.get("version") != LICENCE_VERSION:
+    if type(licence.get("version")) is not int or licence["version"] != LICENCE_VERSION:
         raise ValueError("This Unlock Code has an unsupported version.")
     return licence
+
+
+def _write_private_record(path, record):
+    import tempfile
+    folder = os.path.dirname(os.path.abspath(path))
+    os.makedirs(folder, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".dataeater-key-", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(record, handle, indent=2)
+            handle.flush(); os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def write_secret_file(path: str, content_key: bytes, database: str) -> None:
@@ -755,14 +864,8 @@ def write_secret_file(path: str, content_key: bytes, database: str) -> None:
             "database. Never commit it and never send it to a customer."
         ),
     }
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(record, handle, indent=2)
+    _write_private_record(path, record)
 
-    # Restrict the file to this user only, as far as the system allows.
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass  # not fatal, and some filesystems do not support it
 
 
 # ---------------------------------------------------------------------------
@@ -888,15 +991,15 @@ def unwrap_content_key(envelope: dict, device_private_key) -> bytes:
     if envelope.get("format") != WRAP_FORMAT:
         raise ValueError("This is not a DataEater licence (format=%r)."
                          % envelope.get("format"))
-    if envelope.get("version") != WRAP_VERSION:
+    if type(envelope.get("version")) is not int or envelope["version"] != WRAP_VERSION:
         raise ValueError("Licence version is %r, expected %r."
                          % (envelope.get("version"), WRAP_VERSION))
 
-    if not isinstance(device_private_key, ec.EllipticCurvePrivateKey):
+    if not isinstance(device_private_key, ec.EllipticCurvePrivateKey) or not isinstance(device_private_key.curve, ec.SECP256R1):
         raise ValueError("The device private key is not an EC key.")
 
     ephemeral_public = serialization.load_der_public_key(
-        base64.b64decode(envelope["ephemeral_public_key"]))
+        _decode64(envelope["ephemeral_public_key"]))
     if not isinstance(ephemeral_public, ec.EllipticCurvePublicKey) or \
             not isinstance(ephemeral_public.curve, ec.SECP256R1):
         raise ValueError(
@@ -906,11 +1009,13 @@ def unwrap_content_key(envelope: dict, device_private_key) -> bytes:
     shared = device_private_key.exchange(ec.ECDH(), ephemeral_public)
     wrapping_key = _derive_wrapping_key(shared)
 
-    return AESGCM(wrapping_key).decrypt(
-        base64.b64decode(envelope["nonce"]),
-        base64.b64decode(envelope["wrapped_key"]),
-        None,
-    )
+    nonce = _decode64(envelope["nonce"]); wrapped = _decode64(envelope["wrapped_key"])
+    if len(nonce) != 12 or len(wrapped) != CONTENT_KEY_BYTES + 16:
+        raise ValueError("Invalid wrapped key or nonce length.")
+    result = AESGCM(wrapping_key).decrypt(nonce, wrapped, None)
+    if len(result) != CONTENT_KEY_BYTES:
+        raise ValueError("Invalid content key length.")
+    return result
 
 
 @dataclass
@@ -1031,6 +1136,7 @@ def render_manifest(build: DatabaseBuild, chunks_text: str, sources_text: str) -
 
 def write_database(build: DatabaseBuild, output_path: str) -> BuildReport:
     """Write the build out as a `.dataeater` file."""
+    require_database_id(build.database_id)
     build.finalise()
 
     sources_text = render_sources(build.sources)
@@ -1058,107 +1164,30 @@ def write_database(build: DatabaseBuild, output_path: str) -> BuildReport:
 
 
 def verify_database(path: str) -> List[str]:
-    """Open a finished file and check it is self consistent.
-
-    Returns a list of problems. An empty list means the file is sound.
-    This is the same information the Android app relies on, so catching a
-    problem here means the user finds out before putting the file on a
-    phone.
-    """
-    problems: List[str] = []
-
+    """Check required hashes, bounds and structure; this is not publisher authentication."""
     try:
-        archive = zipfile.ZipFile(path)
-    except zipfile.BadZipFile:
-        return ["Not a valid .dataeater file: it is not a readable ZIP archive."]
-
-    with archive:
-        names = archive.namelist()
-
-        try:
-            check_entry_count(names, path)
-        except ValueError as problem:
-            return [str(problem)]
-
-        if MANIFEST_FILE not in names:
-            return ["The file has no manifest.json, so it is not a DataEater database."]
-        if names[0] != MANIFEST_FILE:
-            problems.append(
-                "manifest.json should be the first file in the archive "
-                "(found '%s' first)." % names[0]
-            )
-
-        try:
-            manifest = json.loads(
-                read_entry_capped(archive, MANIFEST_FILE, path).decode("utf-8"))
-        except ValueError as problem:
-            return [str(problem)]
-
-        if manifest.get("format") != FORMAT_NAME:
-            problems.append("Wrong format field: %r" % manifest.get("format"))
-        if manifest.get("format_version") != FORMAT_VERSION:
-            problems.append(
-                "Format version is %r, expected %r"
-                % (manifest.get("format_version"), FORMAT_VERSION)
-            )
-
-        # Check every fingerprint the manifest promises.
-        for name, entry in (manifest.get("files") or {}).items():
-            if name not in names:
-                problems.append("Missing file listed in the manifest: %s" % name)
-                continue
-
-            try:
-                data = read_entry_capped(archive, name, path)
-            except ValueError as problem:
-                problems.append(str(problem))
-                continue
-            actual = "sha256:" + hashlib.sha256(data).hexdigest()
-            if actual != entry.get("sha256"):
-                problems.append("Fingerprint mismatch for %s" % name)
-
-        # Check the counts, because a wrong count is what the app shows the user.
-        if CHUNKS_FILE in names:
-            try:
-                text = read_entry_capped(archive, CHUNKS_FILE, path).decode("utf-8")
-            except ValueError as problem:
-                problems.append(str(problem))
-                return problems
-            actual_lines = len([line for line in text.splitlines() if line.strip()])
-            claimed = (manifest.get("counts") or {}).get("chunks")
-            if claimed is not None and claimed != actual_lines:
-                problems.append(
-                    "The manifest claims %s chunks but the file holds %d"
-                    % (claimed, actual_lines)
-                )
-
-            # Every chunk must point at a source that exists, or the app
-            # cannot show a citation for it.
-            known = set()
-            if SOURCES_FILE in names:
-                try:
-                    sources_text = read_entry_capped(archive, SOURCES_FILE, path)
-                except ValueError as problem:
-                    problems.append(str(problem))
-                    return problems
-                for record in json.loads(sources_text.decode("utf-8")):
-                    known.add(record.get("id"))
-
-            seen_chunk_ids = set()
-            for line in text.splitlines():
-                if not line.strip():
-                    continue
-                record = json.loads(line)
-                chunk_id = record.get("id")
-                if not chunk_id or chunk_id in seen_chunk_ids:
-                    problems.append("Missing or duplicate chunk ID: %r" % chunk_id)
-                    break
-                seen_chunk_ids.add(chunk_id)
-                if record.get("source_id") not in known:
-                    problems.append(
-                        "Chunk %s refers to unknown source %r"
-                        % (record.get("id"), record.get("source_id"))
-                    )
-                    break
-
-    return problems
+        manifest, data = read_package(path)
+        if manifest.get("encryption", "none") == ENCRYPTION_NAME:
+            return []
+        sources = _json_loads(data[SOURCES_FILE].decode("utf-8"))
+        chunks = []
+        for line in data[CHUNKS_FILE].decode("utf-8").splitlines():
+            if line.strip():
+                if len(chunks) >= 100000: raise ValueError("Too many passages.")
+                chunks.append(_json_loads(line))
+        if not isinstance(sources, list) or not all(isinstance(x, dict) for x in sources + chunks):
+            raise ValueError("Invalid source or passage structure.")
+        ids = [x.get("id") for x in sources]; cids = [x.get("id") for x in chunks]
+        if any(not isinstance(x, str) or not x for x in ids + cids) or len(set(ids)) != len(ids) or len(set(cids)) != len(cids):
+            raise ValueError("Missing or duplicate source/passage identifiers.")
+        known = set(ids)
+        if any(c.get("source_id") not in known for c in chunks):
+            raise ValueError("A passage refers to an unknown source.")
+        counts = manifest.get("counts", {})
+        if not isinstance(counts, dict) or type(counts.get("documents")) is not int or type(counts.get("chunks")) is not int or counts["documents"] != len(sources) or counts["chunks"] != len(chunks):
+            raise ValueError("The manifest counts do not match the database contents.")
+        if len(sources) > 10000 or len(chunks) > 100000:
+            raise ValueError("Too many sources or passages.")
+        return []
+    except (ValueError, KeyError, TypeError, AttributeError, OSError, zipfile.BadZipFile, RuntimeError) as problem:
+        return ["Database verification failed: " + str(problem)]
