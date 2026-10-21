@@ -4,8 +4,7 @@
     dataeater-builder inspect my_manual.dataeater
     dataeater-builder review ./manuals --output extracted/
 
-This runs on a Linux computer. The Android app never builds databases; it
-only reads them.
+This runs on a Linux computer. The Android app also has its own local database builder.
 """
 
 import argparse
@@ -17,8 +16,17 @@ import textwrap
 import zipfile
 from typing import List
 
-from . import extractors, packaging
+from . import extractors, packaging, quality
 from .chunker import chunk_pages, merge_short_chunks
+
+
+def hashlib_file(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, 'rb') as stream:
+        for block in iter(lambda: stream.read(65536), b''):
+            h.update(block)
+    return h.hexdigest()
 
 
 def make_database_id(name: str) -> str:
@@ -76,16 +84,21 @@ def command_build(arguments: argparse.Namespace) -> int:
     )
 
     chunk_number = 1
+    quality_pages = 0
 
     for index, path in enumerate(files):
         print("Reading  %s" % os.path.basename(path))
         document = extractors.extract(path)
+        quality_pages += document.total_pages or max((p.number for p in document.pages), default=0)
+        if quality_pages > 20000:
+            raise ValueError('This quality report is too large. Split the document collection.')
 
         if document.warning:
             warnings.append(document.warning)
             print("         !! %s" % document.warning.splitlines()[0])
 
         if not document.pages:
+            build.excluded_quality.append(quality.source_report("s%d" % (index + 1), hashlib_file(path), [], document.total_pages, path, document.page_metrics))
             skipped.append(os.path.basename(path))
             print("         -- no usable text, skipping")
             continue
@@ -116,6 +129,8 @@ def command_build(arguments: argparse.Namespace) -> int:
 
         chunk_number += len(produced)
         build.chunks.extend(produced)
+        build.sources[-1].preparation_quality = quality.source_report(source_id, hashlib_file(path), document.pages,
+            document.total_pages or max(p.number for p in document.pages), path, document.page_metrics, chunks=produced)
 
         print("         %d pages, %d characters, %d chunks"
               % (len(document.pages), document.character_count, len(produced)))
@@ -152,6 +167,8 @@ def command_build(arguments: argparse.Namespace) -> int:
         return 2
 
     print("  check      : all fingerprints and counts are correct")
+    print(quality.summary([s.preparation_quality for s in build.sources] + build.excluded_quality))
+    print("Full preparation report is embedded in the database; open Inspect database to read it.")
 
     if warnings:
         print()
@@ -212,6 +229,13 @@ def command_inspect(arguments: argparse.Namespace) -> int:
     print()
 
     if not locked:
+        reports = quality.from_sources(sources)
+        if reports:
+            print(quality.summary(reports + [q for r in reports for q in r.get('excluded_documents', [])]))
+            print("Preparation quality report (counts and flags; not technical approval)")
+            print(json.dumps({'format': 'dataeater-preparation-quality', 'version': 1, 'documents': reports}, ensure_ascii=False, indent=2))
+        else:
+            print("No preparation quality report in this older database.")
         print("Documents (%d)" % len(sources))
         for source in sources:
             print("  [%s] %s" % (source.get("id"), source.get("title")))

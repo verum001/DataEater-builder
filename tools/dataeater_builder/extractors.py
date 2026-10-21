@@ -45,6 +45,7 @@ class ExtractedDocument:
     warning: str = ""
     total_pages: int = 0
     blank_pages: int = 0
+    page_metrics: list = field(default_factory=list)
 
     @property
     def character_count(self) -> int:
@@ -224,6 +225,8 @@ def extract_pdf(path: str) -> ExtractedDocument:
         result = ExtractedDocument(path=path, title=title, pages=pages)
         result.total_pages = total_pages
         result.blank_pages = blank_pages
+        from .quality import metric
+        result.page_metrics = [metric(p.number, p.text, len(p.text) >= MIN_USEFUL_PAGE_CHARACTERS, True) for p in raw_pages]
 
         # Two separate signs of a scan, and BOTH must be checked:
         #   - no usable text at all (the strongest sign)

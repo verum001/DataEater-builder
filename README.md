@@ -107,3 +107,9 @@ Copyright 2026 Jack. Original code and documentation: [Apache 2.0](LICENSE).
 PyMuPDF/MuPDF uses AGPLv3 or a commercial licence. Apache licensing of original code does not override dependency obligations. The Debian package does not bundle dependency binaries. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 Input documents and database content retain their own rights. Only share material you have permission to distribute.
+
+## Preparation quality reports (0.5.0)
+
+Database creation works offline without AI. Every new database stores a source-linked report of included/omitted pages, sparse text and oversized passages. PDF reading order remains unverified and is flagged for original-page review. Reviewed builds also highlight changed restrictions, units, identifiers, numbers and step numbering. These are non-blocking review hints, not semantic approval; English/Russian restriction hints do not cover every language.
+
+Use **Inspect database** on the desktop or `dataeater-builder inspect FILE.dataeater` to read the full report. Review exports include `quality_report.json`; builds recompute review changes rather than trusting that advisory file. Original page markers and fingerprints remain mandatory. The embedded report is encrypted with private source metadata. No raw text, local paths or secret keys are copied into reports. Existing database readers remain compatible.

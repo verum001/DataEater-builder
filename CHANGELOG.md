@@ -1,3 +1,11 @@
+# 0.5.0 — 21 October 2026
+
+- Offline preparation reports preserve included/omitted page inventories, text sizes and explicit PDF layout-review limitations.
+- Reviewed builds flag changed restrictions, units, numbers, identifiers and numbered steps without requiring AI or rejecting legitimate formatting edits.
+- CLI and desktop Inspect show embedded reports; review exports include quality_report.json.
+- Reports retain format-v1 compatibility and are encrypted with source metadata in private databases.
+- Database output is staged, verified and atomically replaced; failed builds preserve earlier output.
+
 ## 0.4.1 — 13 October 2026
 
 Bounded package inspection, mandatory integrity checks before encryption, strict

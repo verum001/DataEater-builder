@@ -29,7 +29,7 @@ from .chunker import Chunk
 FORMAT_NAME = "dataeater"
 FORMAT_VERSION = 1
 
-BUILDER_VERSION = "0.4.1"
+BUILDER_VERSION = "0.5.0"
 
 MANIFEST_FILE = "manifest.json"
 SOURCES_FILE = "sources.json"
@@ -1029,6 +1029,7 @@ class SourceRecord:
     language: str = "en"
     license: str = "unknown"
     original_path: str = ""
+    preparation_quality: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -1043,6 +1044,7 @@ class DatabaseBuild:
     created_utc: str = ""
     sources: List[SourceRecord] = field(default_factory=list)
     chunks: List[Chunk] = field(default_factory=list)
+    excluded_quality: list = field(default_factory=list)
 
     def finalise(self) -> None:
         """Fill in the timestamp. Called just before writing."""
@@ -1081,6 +1083,7 @@ def render_sources(sources: List[SourceRecord]) -> str:
             "language": source.language,
             "license": source.license,
             "year": source.year,
+            **({"preparation_quality": source.preparation_quality} if source.preparation_quality else {}),
         }
         for source in sources
     ]
@@ -1139,6 +1142,8 @@ def write_database(build: DatabaseBuild, output_path: str) -> BuildReport:
     require_database_id(build.database_id)
     build.finalise()
 
+    if build.excluded_quality and build.sources:
+        build.sources[0].preparation_quality['excluded_documents'] = build.excluded_quality
     sources_text = render_sources(build.sources)
     chunks_text = render_chunks(build.chunks)
     manifest_text = render_manifest(build, chunks_text, sources_text)
@@ -1149,10 +1154,23 @@ def write_database(build: DatabaseBuild, output_path: str) -> BuildReport:
 
     # The archive is written with no compression on the manifest, which is
     # tiny anyway, so a reader can find it immediately at the front.
-    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(MANIFEST_FILE, manifest_text)
-        archive.writestr(SOURCES_FILE, sources_text)
-        archive.writestr(CHUNKS_FILE, chunks_text)
+    import tempfile
+    fd, stage = tempfile.mkstemp(prefix='.dataeater-build-', dir=folder)
+    try:
+        with os.fdopen(fd, 'wb') as handle:
+            with zipfile.ZipFile(handle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(MANIFEST_FILE, manifest_text)
+                archive.writestr(SOURCES_FILE, sources_text)
+                archive.writestr(CHUNKS_FILE, chunks_text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        problems = verify_database(stage)
+        if problems:
+            raise ValueError('; '.join(problems))
+        os.replace(stage, output_path)
+    finally:
+        if os.path.exists(stage):
+            os.unlink(stage)
 
     return BuildReport(
         output_path=output_path,

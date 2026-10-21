@@ -3,7 +3,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from . import extractors, packaging
+from . import extractors, packaging, quality
 from .chunker import Page, chunk_pages, merge_short_chunks
 
 PAGE_MARKER = re.compile(r'^=== PAGE ([1-9][0-9]*) ===\s*$', re.MULTILINE)
@@ -70,6 +70,8 @@ def export_review(input_path, output, batch_chars=30000):
         if doc.needs_ocr or not doc.pages:
             raise ValueError('%s: %s' % (Path(path).name, doc.warning or 'No usable text.'))
         documents.append((path, doc))
+    if sum(doc.total_pages or max(p.number for p in doc.pages) for _, doc in documents) > 20000:
+        raise ValueError('This quality report is too large. Split the document collection.')
     folder.mkdir(parents=True)
     for name in ['original', 'reviewed', 'notes']:
         (folder/name).mkdir()
@@ -86,6 +88,7 @@ def export_review(input_path, output, batch_chars=30000):
         source = {'id': 's%d' % index, 'title': doc.title,
                   'filename': Path(path).name, 'source_sha256': hashlib.sha256(Path(path).read_bytes()).hexdigest(),
                   'total_pdf_pages': doc.total_pages or 1, 'omitted_minimal_text_pages': doc.blank_pages,
+                  'page_metrics': doc.page_metrics,
                   'page_contexts': {str(p.number): {'paths': p.section_paths, 'default': p.default_section_path} for p in doc.pages if p.section_paths or p.default_section_path},
                   'parts': []}
         for number, pages in enumerate(batches, 1):
@@ -98,6 +101,9 @@ def export_review(input_path, output, batch_chars=30000):
                                     'characters': len(text)})
         manifest['documents'].append(source)
     (folder/'review.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+    reports = [quality.source_report('s%d' % i, hashlib.sha256(Path(path).read_bytes()).hexdigest(), doc.pages,
+                doc.total_pages or max(p.number for p in doc.pages), str(path), doc.page_metrics) for i, (path, doc) in enumerate(documents, 1)]
+    (folder/'quality_report.json').write_text(json.dumps({'format': 'dataeater-preparation-quality', 'version': 1, 'documents': reports, 'limitations': quality.LIMITATION}, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
     (folder/'LLM_PROMPT.txt').write_text(PROMPT, encoding='utf-8')
     (folder/'README.md').write_text('''# Review extracted text
 
@@ -190,6 +196,8 @@ def command_build_reviewed(args):
           description=args.description or 'Built from reviewed document text; original PDF page references retained.',
           language=args.language, license=args.license)
     changed_numbers = 0
+    if any(type(source.get('total_pdf_pages')) is not int or not 1 <= source['total_pdf_pages'] <= 10000 for source, _, _ in results) or sum(source['total_pdf_pages'] for source, _, _ in results) > 20000:
+        raise ValueError('This quality report is too large. Split the document collection.')
     for source, pages, originals in results:
         build.sources.append(packaging.SourceRecord(source_id=source['id'], title=source['title'],
               publisher=args.publisher, language=args.language, license=args.license))
@@ -199,6 +207,18 @@ def command_build_reviewed(args):
         produced = merge_short_chunks(chunk_pages(pages, target_chars=args.target_chars,
                     source_id=source['id'], start_number=len(build.chunks)+1))
         build.chunks.extend(produced)
+        metrics = source.get('page_metrics', [])
+        if not isinstance(metrics, list) or len(metrics) > source['total_pdf_pages']:
+            raise ValueError('Invalid quality page inventory.')
+        seen = set()
+        for m in metrics:
+            if (not isinstance(m, dict) or type(m.get('page')) is not int or m['page'] in seen
+                    or not 1 <= m['page'] <= source['total_pdf_pages']
+                    or any(type(m.get(k)) is not int or m[k] < 0 or m[k] > 12 * 1024 * 1024 for k in ['characters', 'utf8_bytes'])):
+                raise ValueError('Invalid quality page inventory.')
+            seen.add(m['page'])
+        build.sources[-1].preparation_quality = quality.source_report(source['id'], source.get('source_sha256', ''), pages,
+                source['total_pdf_pages'], source.get('filename', ''), metrics, originals, produced)
     if not build.chunks:
         raise ValueError('No text remains for a database.')
     report = packaging.write_database(build, args.output)
@@ -206,6 +226,8 @@ def command_build_reviewed(args):
     if problems:
         raise ValueError('Database verification failed: '+ '; '.join(problems))
     print('Built %s: %d documents, %d chunks; page markers and fingerprints verified.' % (args.output, report.document_count, report.chunk_count))
+    print(quality.summary([s.preparation_quality for s in build.sources]))
+    print('Full preparation report is embedded in the database; open Inspect database to read it.')
     if changed_numbers:
         print('Review reminder: numeric text changed on %d pages. Check these corrections against the original PDF.' % changed_numbers)
     return 0

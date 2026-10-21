@@ -20,17 +20,8 @@ exports/
 *.private-key
 *.public-key
 
-# Local-only instructions and private project state
+# Private agent instructions are not public project files.
 AGENTS.md
-CLAUDE.md
 AI_INSTRUCTIONS.md
+CLAUDE.md
 AI_instr/
-.agents/
-.codex/
-.github/copilot-instructions.md
-.github/instructions/
-research/
-research-*/
-benchmarks/
-local.properties
-.github-private/
